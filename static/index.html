@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>IPO Buy-or-Not Analyzer</title>
+<style>
+:root{--bg:#eef1f5;--panel:#fff;--ink:#14213d;--mute:#5b6784;--line:#d5dbe6;--good:#15803d;--mid:#b45309;--bad:#b42318;--accent:#0f766e}
+@media (prefers-color-scheme:dark){:root{--bg:#0f1626;--panel:#172036;--ink:#e8ecf5;--mute:#98a3bf;--line:#2a3654;--good:#4ade80;--mid:#fbbf24;--bad:#f87171;--accent:#2dd4bf}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 "Segoe UI",system-ui,sans-serif}
+main{max-width:1000px;margin:0 auto;padding:24px 16px 48px}
+h1{font-size:1.6rem;margin:0 0 4px}
+.sub{color:var(--mute);margin:0 0 20px}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:20px}
+@media(max-width:760px){.grid{grid-template-columns:1fr}}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:18px}
+.panel h2{font-size:1.05rem;margin:0 0 12px}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:10px 12px}
+label{display:block;font-size:.85rem;color:var(--mute)}
+input{width:100%;margin-top:3px;padding:8px;border:1px solid var(--line);border-radius:6px;background:transparent;color:var(--ink);font:inherit}
+input:focus,button:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+h3{font-size:.9rem;margin:16px 0 8px;color:var(--ink)}
+button{margin-top:16px;width:100%;padding:12px;border:0;border-radius:8px;background:var(--accent);color:#fff;font:600 1rem inherit;cursor:pointer}
+.verdict{font-size:1.5rem;font-weight:700;line-height:1.2}
+.good{color:var(--good)}.mid{color:var(--mid)}.bad{color:var(--bad)}
+.score{font-size:3rem;font-weight:700;line-height:1}
+.bar{height:8px;background:var(--line);border-radius:4px;margin:3px 0 10px;overflow:hidden}
+.bar i{display:block;height:100%;background:var(--accent)}
+.fl{display:flex;justify-content:space-between;font-size:.85rem}
+table{width:100%;border-collapse:collapse;font-size:.92rem;margin-top:6px}
+th,td{padding:7px 4px;border-bottom:1px solid var(--line);text-align:right}
+th:first-child,td:first-child{text-align:left}
+th{color:var(--mute);font-weight:500}
+.big{font-size:1.3rem;font-weight:700}
+.small{font-size:.8rem;color:var(--mute);margin:10px 0 0;padding-left:18px}
+.err{color:var(--bad);margin-top:10px}
+.hide{display:none}
+</style>
+</head>
+<body>
+<main>
+  <h1>IPO Buy-or-Not Analyzer</h1>
+  <p class="sub">Type an IPO name. The app researches the numbers, scores the IPO and shows profit or loss per lot.</p>
+  <section class="panel" style="margin-bottom:20px">
+    <label>IPO name<input id="name" type="text" placeholder="e.g. BLS Polymers" value="BLS Polymers"></label>
+    <button id="find">Fetch data and analyze</button>
+    <div id="status" class="small" style="padding:0"></div>
+  </section>
+  <div class="grid">
+    <section class="panel">
+      <h2>IPO details (auto-filled, editable)</h2>
+      <div class="row">
+        <label>Issue price (₹)<input id="price" type="number" value="150"></label>
+        <label>Lot size<input id="lot_size" type="number" value="100"></label>
+        <label>IPO P/E<input id="ipo_pe" type="number" value="31"></label>
+        <label>Peer average P/E<input id="peer_pe" type="number" value="30"></label>
+        <label>Profit growth (%)<input id="pat_growth" type="number" value="50"></label>
+        <label>Revenue growth (%)<input id="rev_growth" type="number" value="11.7"></label>
+        <label>ROE (%)<input id="roe" type="number" value="28.45"></label>
+        <label>Debt / equity<input id="debt_equity" type="number" value="0.5"></label>
+      </div>
+      <h3>Market signals (update live)</h3>
+      <div class="row">
+        <label>GMP (₹)<input id="gmp" type="number" value="20"></label>
+        <label>Market mood (1 bad to 5 great)<input id="sentiment" type="number" min="1" max="5" value="3"></label>
+        <label>QIB subscription (x)<input id="sub_qib" type="number" value="0"></label>
+        <label>NII subscription (x)<input id="sub_nii" type="number" value="0"></label>
+        <label>Retail subscription (x)<input id="sub_retail" type="number" value="0"></label>
+      </div>
+      <button id="go">Analyze IPO</button>
+      <div id="err" class="err"></div>
+    </section>
+
+    <section class="panel">
+      <h2>Result</h2>
+      <p id="empty">Fill in the numbers and select Analyze IPO.</p>
+      <div id="out" class="hide">
+        <div class="score" id="score"></div>
+        <div class="verdict" id="verdict"></div>
+        <h3>Score breakdown</h3>
+        <div id="factors"></div>
+        <h3>If you buy: profit or loss</h3>
+        <table id="scen"></table>
+        <p>Cost per lot: <b id="cost"></b> · Lots you can bid: <b id="lots"></b> · Allotment chance: <b id="allot"></b></p>
+        <p>Expected profit per lot (after allotment chance): <span class="big" id="exp"></span></p>
+        <ul class="small" id="notes"></ul>
+      </div>
+    </section>
+  </div>
+</main>
+<script>
+const $ = id => document.getElementById(id);
+const ids = ["price","lot_size","ipo_pe","peer_pe","pat_growth","rev_growth","roe","debt_equity","gmp","sentiment","sub_qib","sub_nii","sub_retail"];
+const names = {valuation:"Valuation vs peers",growth:"Growth",roe:"Return on equity",debt:"Low debt",subscription:"Subscription demand",gmp:"Grey market premium",sentiment:"Market mood"};
+const rs = n => (n < 0 ? "-₹" : "₹") + Math.abs(n).toLocaleString("en-IN");
+const cls = n => n >= 0 ? "good" : "bad";
+
+$("find").onclick = async () => {
+  $("err").textContent = ""; $("status").textContent = "Fetching data...";
+  $("find").disabled = true;
+  try {
+    const r = await fetch("/api/lookup", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({name:$("name").value})});
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error);
+    ids.forEach(k => { if (d[k] !== null && d[k] !== undefined) $(k).value = d[k]; });
+    const dates = [d.open_date && "opens " + d.open_date, d.close_date && "closes " + d.close_date, d.listing_date && "lists " + d.listing_date].filter(Boolean).join(", ");
+    const miss = d.missing.length ? ` Not found, using the previous values: ${d.missing.join(", ")}. Please check them.` : "";
+    const src = (d.sources || []).join(" ");
+    $("status").textContent = `${d.company || $("name").value}: ${dates}.${miss} ${d.notes} Source: ${src}`;
+    $("go").click();
+  } catch (e) { $("err").textContent = e.message || "Could not reach the server."; $("status").textContent = ""; }
+  $("find").disabled = false;
+};
+
+$("go").onclick = async () => {
+  $("err").textContent = "";
+  const body = {};
+  ids.forEach(k => body[k] = $(k).value);
+  try {
+    const r = await fetch("/api/analyze", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(body)});
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error);
+    show(d);
+  } catch (e) { $("err").textContent = e.message || "Could not reach the server. Is app.py running?"; }
+};
+
+function show(d) {
+  $("empty").classList.add("hide"); $("out").classList.remove("hide");
+  $("score").textContent = d.score + " / 100";
+  $("verdict").textContent = d.verdict; $("verdict").className = "verdict " + d.tone;
+  $("factors").innerHTML = Object.keys(d.factors).map(k =>
+    `<div class="fl"><span>${names[k]} (weight ${d.weights[k]}%)</span><span>${d.factors[k]}</span></div><div class="bar"><i style="width:${d.factors[k]}%"></i></div>`).join("");
+  const s = d.scenarios;
+  const row = (n, x) => `<tr><td>${n}</td><td class="${cls(x.pct)}">${x.pct}%</td><td class="${cls(x.per_lot)}">${rs(x.per_lot)}</td><td class="${cls(x.max_lots)}">${rs(x.max_lots)}</td></tr>`;
+  $("scen").innerHTML = `<tr><th>Case</th><th>Listing move</th><th>Per lot</th><th>Max lots (${d.max_lots})</th></tr>` + row("Bad", s.bear) + row("Likely", s.base) + row("Good", s.bull);
+  $("cost").textContent = rs(d.per_lot_cost); $("lots").textContent = d.max_lots; $("allot").textContent = d.allotment_chance_pct + "%";
+  $("exp").textContent = rs(d.expected_profit); $("exp").className = "big " + cls(d.expected_profit);
+  $("notes").innerHTML = d.notes.map(n => `<li>${n}</li>`).join("");
+}
+</script>
+</body>
+</html>
